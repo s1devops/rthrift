@@ -46,7 +46,6 @@ class CommandPacketPublish(CommandPacket):
         self.routing_key = routing_key
         self.mandatory = mandatory
 
-        self.reply_queue = Queue()
 
 class CommandPacketConsume(CommandPacket):
     TYPE = PacketTypes.CONSUME
@@ -87,12 +86,6 @@ class RClient(object):
             self.cmd_queue.task_done()
             if cmd.TYPE == PacketTypes.PUBLISH:
                 msg = cmd.msg.to_rmq_msg(self.channel)
-                if 'correlation_id' in msg.properties:
-                    cor_id = msg.properties['correlation_id']
-                else:
-                    cor_id = str(uuid4())
-                    msg.properties['correlation_id'] = cor_id
-                reply_queues[cor_id] = cmd.reply_queue
                 msg.publish(cmd.exchange, cmd.routing_key, cmd.mandatory)
             elif cmd.TYPE == PacketTypes.SHUTDOWN:
                 #self.channel.close()
@@ -101,9 +94,7 @@ class RClient(object):
                 reply_queues = {}
                 return
             elif cmd.TYPE == PacketTypes.RECEIVE:
-                if 'correlation_id' in cmd.msg.properties and cmd.msg.properties['correlation_id'] in reply_queues:
-                    reply_queues[msg.properties['correlation_id']].put(cmd)
-                elif cmd.queue_id in reply_queues:
+                if cmd.queue_id in reply_queues:
                     reply_queues[cmd.queue_id].put(cmd)
                 else:
                     raise Exception('todo, unrouted packets')

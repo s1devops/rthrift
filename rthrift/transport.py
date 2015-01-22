@@ -6,6 +6,8 @@ from thriftpy.transport.transport import TTransportBase, TTransportException
 
 from .rclient import Message
 import rabbitpy
+import queue
+from uuid import uuid4
 
 class TBinaryProtocolFactory_R(object):
     def __init__(self, strict_read=True, strict_write=True):
@@ -66,9 +68,15 @@ class TTransport_R(TTransportBase):
 
         self._rpc_func = None
         self._rpc_msg_id = None
+        self._reply_to = None
         self._role = role
 
         self._rpc_queue = None
+
+        self._read_timeout = None
+
+    def set_read_timeout(self, timeout):
+        self._read_timeout = timeout
 
     def listen(self):
         queue = self._amqp_client.consumer(self.msg_recv, name=self.amqp_queue)
@@ -93,7 +101,6 @@ class TTransport_R(TTransportBase):
             self._status = self.OPEN
 
     def close(self):
-        #print("close called")
         pass
 
     def shutdown(self):
@@ -133,7 +140,8 @@ class TTransport_R(TTransportBase):
     def rpc_msg_id(self):
         return self._rpc_msg_id
 
-    def set_rpc_msg_id(self, id):
+    @rpc_msg_id.setter
+    def rpc_msg_id(self, id):
         self._rpc_msg_id = id
 
     def wbuf_reset(self):
@@ -151,15 +159,26 @@ class TTransport_R(TTransportBase):
             msg.ack()
 
     def _read_msg(self):
-        msg = self.rpc_queue.get()
-        if msg is None:
-            return False
-        if self._role == self.SERVER:
-            self._reply_to = msg.properties['reply_to']
+        try:
+            while True:
+                msg = self.rpc_queue.get(timeout = self._read_timeout)
+                if msg is None:
+                    return False
+                if self._role == self.SERVER:
+                    if 'correlation_id' in msg.properties:
+                        self.rpc_msg_id = msg.properties['correlation_id']
+                    self._reply_to = msg.properties['reply_to']
+                    self._rbuf = BytesIO(msg.body)
+                    return True
 
-        #TODO: merge with existing buffer?
-        self._rbuf = BytesIO(msg.body)
-        return True
+                if self._role == self.CLIENT:
+                    if self.rpc_msg_id is None or self.rpc_msg_id == msg.properties['correlation_id']:
+                        self._rbuf = BytesIO(msg.body)
+                        return True
+
+        except queue.Empty:
+            return False
+
 
     def read(self, sz):
         if self._status != self.OPEN:
@@ -169,7 +188,8 @@ class TTransport_R(TTransportBase):
         if len(ret) != 0:
             return ret
 
-        self._read_msg()
+        if not self._read_msg():
+            raise TTransportException('RMQ read failed')
         if self._status != self.OPEN:
             raise TTransportException('RMQ Transport Not Open (read)')
 
@@ -178,6 +198,9 @@ class TTransport_R(TTransportBase):
     def flush(self):
         msg = self.wbuf.getvalue()
         self.wbuf_reset()
+
+        if self._role == self.CLIENT:
+            self.rpc_msg_id = str(uuid4()).encode('utf8')
 
         properties = {
             'content_type': 'application/x-thrift',
