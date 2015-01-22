@@ -11,16 +11,13 @@ class TThreadedServer_R(TThreadedServer):
         TThreadedServer.__init__(self, *args, **kwargs)
         self._close_actions = []
 
-        def add_close_action(self, action):
-            self._close_actions.append(action)
+    def add_close_action(self, action):
+        self._close_actions.append(action)
 
-        def close(self):
-            self.closed = True
-            for action in self._close_actions:
-                print("shutdown action calling")
-                action()
-                print("shutdown action called")
-
+    def close(self):
+        self.closed = True
+        for action in self._close_actions:
+            action()
 
 
 def get_server(service, responder, uri, exchange, queue):
