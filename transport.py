@@ -97,6 +97,8 @@ class TTransport_R(TTransportBase):
         pass
 
     def shutdown(self):
+        if self._status == self.CLOSED:
+            return
         self._status = self.CLOSED
         self._amqp_client.shutdown()
         self.rpc_queue.put(None)
