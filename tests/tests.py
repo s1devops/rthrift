@@ -37,7 +37,7 @@ class TestCommications(unittest.TestCase):
         self.server = get_server(thrift_mod.TestService, responder, uri, exchange, queue)
         threading.Thread(target=self.serverThread).start()
 
-        self.client = get_client(thrift_mod.TestService, uri, exchange, queue)
+        self.client = get_client(thrift_mod.TestService, uri, exchange, queue, read_timeout=1)
 
 
 
