@@ -47,6 +47,7 @@ class TTransport_Dummy(object):
 class TTransport_R(TTransportBase):
     CLIENT = 'CLIENT'
     SERVER = 'SERVER'
+    BROADCAST_SENDER = 'BROADCAST_SENDER'
 
     CLOSED = 'CLOSED'
     OPEN = 'OPEN'
@@ -97,6 +98,8 @@ class TTransport_R(TTransportBase):
     def open(self):
         if self._role == self.CLIENT:
             q = self._amqp_client.consumer(self.msg_recv, no_ack = True, name='amq.rabbitmq.reply-to')
+
+        if self._role == self.CLIENT or self._role == self.BROADCAST_SENDER:
             self._amqp_client.start()
             self._status = self.OPEN
 
@@ -209,8 +212,9 @@ class TTransport_R(TTransportBase):
 
         message = Message(msg,properties)
 
-        if self._role == self.CLIENT:
-            properties['reply_to'] = 'amq.rabbitmq.reply-to'
+        if self._role == self.CLIENT or self._role == self.BROADCAST_SENDER:
+            if self._role == self.CLIENT:
+                properties['reply_to'] = 'amq.rabbitmq.reply-to'
             exchange = self.amqp_exchange
             self._amqp_client.publish(message, exchange, self.amqp_queue)
         else:
