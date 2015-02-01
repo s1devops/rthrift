@@ -1,40 +1,40 @@
 import unittest
 
-from rthrift.broadcast import get_sender
+from rthrift.broadcast import get_sender, get_listener
 import thriftpy
 import threading
 from time import sleep
 import os
 
+from queue import Queue
+
 class Responder(object):
 
-    def __init__(self, thrift_mod):
+    def __init__(self, thrift_mod, listener_queue):
         self.thrift_mod = thrift_mod
+        self.listener_queue = listener_queue
 
-        self.set_ping_func(lambda x: x)
 
-    def set_ping_func(self, func):
-        self._ping_func = func
-
-    def ping(self, val):
-        return self._ping_func(val)
+    def ping_broadcast(self, val):
+        self.listener_queue.put(val)
 
 
 class TestCommications(unittest.TestCase):
-    def serverThread(self):
-        self.server.serve()
+    def listenerThread(self):
+        self.listener.serve()
 
     def setUp(self):
         thrift_mod = thriftpy.load("tests/test_resources/service.thrift")
         uri = os.environ.get('AMQP_URI', 'amqp://guest:guest@localhost:5672/%2f')
 
-        queue = 'test.communication'
         exchange = 'amq.match'
 
-        #responder = Responder(thrift_mod)
-        #self.responder = responder
-        #self.server = get_server(thrift_mod.TestService, responder, uri, exchange, queue)
-        #threading.Thread(target=self.serverThread).start()
+        self.listener_queue = Queue()
+        responder = Responder(thrift_mod, self.listener_queue)
+        self.responder = responder
+        self.listener = get_listener(thrift_mod.TestService, responder, uri, exchange, routing_keys=['TestService.ping_broadcast'])
+        threading.Thread(target=self.listenerThread).start()
+        sleep(3) # give listener time to start and register
 
         self.sender = get_sender(thrift_mod.TestService, uri, exchange)
 
@@ -42,14 +42,18 @@ class TestCommications(unittest.TestCase):
 
 
     def test_successful(self):
-        #self.responder.set_ping_func(lambda x: x)
-        for i in range(20):
+
+        range_max = 20
+        for i in range(range_max):
             self.sender.ping_broadcast(i)
-            #self.assertEqual(response, i)
+
+        for i in range(range_max):
+            val = self.listener_queue.get()
+            self.assertEqual(val, i)
 
 
     def tearDown(self):
-        #self.server.close()
+        self.listener.close()
 
         self.sender._iprot.trans.close()
         self.sender._iprot.trans.shutdown()

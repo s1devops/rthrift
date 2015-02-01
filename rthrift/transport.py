@@ -48,11 +48,12 @@ class TTransport_R(TTransportBase):
     CLIENT = 'CLIENT'
     SERVER = 'SERVER'
     BROADCAST_SENDER = 'BROADCAST_SENDER'
+    BROADCAST_LISTENER = 'BROADCAST_LISTENER'
 
     CLOSED = 'CLOSED'
     OPEN = 'OPEN'
 
-    def __init__(self, amqp_client, role = None, amqp_exchange = None, amqp_queue = None):
+    def __init__(self, amqp_client, role = None, amqp_exchange = None, amqp_queue = None, routing_keys = None):
         if role is None:
             role = self.CLIENT
         self._amqp_client = amqp_client
@@ -67,6 +68,9 @@ class TTransport_R(TTransportBase):
         self._rbuf = None
 
         self._rpc_function_name = None
+        if routing_keys is None:
+            routing_keys = []
+        self._routing_keys = routing_keys
 
 
         self._rpc_msg_id = None
@@ -81,8 +85,13 @@ class TTransport_R(TTransportBase):
         self._read_timeout = timeout
 
     def listen(self):
-        queue = self._amqp_client.consumer(self.msg_recv, name=self.amqp_queue)
-        queue.bind(self.amqp_exchange, self.amqp_queue)
+        if self._role == self.SERVER:
+            queue = self._amqp_client.consumer(self.msg_recv, name=self.amqp_queue)
+            queue.bind(self.amqp_exchange, self.amqp_queue)
+        elif self._role == self.BROADCAST_LISTENER:
+            queue = self._amqp_client.consumer(self.msg_recv, name=self.amqp_queue, no_ack=True, exclusive=True, auto_delete=True)
+            for routing_key in self._routing_keys:
+                queue.bind(self.amqp_exchange, routing_key)
         self._amqp_client.start()
         self._status = self.OPEN
 
@@ -163,7 +172,7 @@ class TTransport_R(TTransportBase):
     def msg_recv(self, msg):
         self.rpc_queue.put(msg)
 
-        if self._role != self.CLIENT and msg is not None:
+        if self._role not in [self.CLIENT, self.BROADCAST_LISTENER] and msg is not None:
             msg.ack()
 
     def _read_msg(self):
@@ -172,14 +181,13 @@ class TTransport_R(TTransportBase):
                 msg = self.rpc_queue.get(timeout = self._read_timeout)
                 if msg is None:
                     return False
-                if self._role == self.SERVER:
+                if self._role == self.SERVER or self._role == self.BROADCAST_LISTENER:
                     if 'correlation_id' in msg.properties:
                         self.rpc_msg_id = msg.properties['correlation_id']
                     self._reply_to = msg.properties['reply_to']
                     self._rbuf = BytesIO(msg.body)
                     return True
-
-                if self._role == self.CLIENT:
+                elif self._role == self.CLIENT:
                     if self.rpc_msg_id is None or self.rpc_msg_id == msg.properties['correlation_id']:
                         self._rbuf = BytesIO(msg.body)
                         return True
