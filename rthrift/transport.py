@@ -18,17 +18,17 @@ class TBinaryProtocolFactory_R(object):
         return TBinaryProtocol_R(trans, self.strict_read, self.strict_write)
 
 class TBinaryProtocol_R(TBinaryProtocol):
-    pass
-    #def write_message_begin(self, name, ttype, seqid):
-    #    #self.trans.set_rpc_func(name)
-    #    #self.trans.set_rpc_msg_id(seqid)
-    #    super().write_message_begin(name, ttype, seqid)
 
-    #def read_message_begin(self):
-    #    print("reading message begin")
-    #    api, type, seqid = super().read_message_begin()
-    #    print(api, type, seqid)
-    #    return api, type, seqid
+    def __init__(self, trans, strict_read=True, strict_write=True, transport_mode=None, service_name=None):
+        super().__init__(trans, strict_read=strict_read, strict_write=strict_write)
+
+        self.transport_mode = transport_mode
+        self.service_name = service_name
+
+    def write_message_begin(self, name, ttype, seqid):
+        if self.transport_mode == TTransport_R.BROADCAST_SENDER:
+            self.trans.rpc_function_name = '{}.{}'.format(self.service_name, name)
+        super().write_message_begin(name, ttype, seqid)
 
 
 class TTransport_Dummy(object):
@@ -63,11 +63,12 @@ class TTransport_R(TTransportBase):
 
         self._accept_count = 0
 
-        # TODO: bind server/client
         self._wbuf = None
         self._rbuf = None
 
-        self._rpc_func = None
+        self._rpc_function_name = None
+
+
         self._rpc_msg_id = None
         self._reply_to = None
         self._role = role
@@ -126,8 +127,12 @@ class TTransport_R(TTransportBase):
         return self._rbuf
 
     @property
-    def rpc_func(self):
-        return self._rpc_func
+    def rpc_function_name(self):
+        return self._rpc_function_name
+
+    @rpc_function_name.setter
+    def rpc_function_name(self, value):
+        self._rpc_function_name = value
 
     @property
     def rpc_queue(self):
@@ -158,7 +163,7 @@ class TTransport_R(TTransportBase):
     def msg_recv(self, msg):
         self.rpc_queue.put(msg)
 
-        if self._role == self.SERVER and msg is not None:
+        if self._role != self.CLIENT and msg is not None:
             msg.ack()
 
     def _read_msg(self):
@@ -212,11 +217,14 @@ class TTransport_R(TTransportBase):
 
         message = Message(msg,properties)
 
-        if self._role == self.CLIENT or self._role == self.BROADCAST_SENDER:
-            if self._role == self.CLIENT:
-                properties['reply_to'] = 'amq.rabbitmq.reply-to'
+        if self._role == self.CLIENT:
+            properties['reply_to'] = 'amq.rabbitmq.reply-to'
             exchange = self.amqp_exchange
             self._amqp_client.publish(message, exchange, self.amqp_queue)
-        else:
+        elif self._role == self.BROADCAST_SENDER:
+            exchange = self.amqp_exchange
+            routing_key = self.rpc_function_name
+            self._amqp_client.publish(message, exchange, routing_key)
+        elif self._role == self.SERVER:
             #TODO: are we thread safe?
             self._amqp_client.publish(message, "", self._reply_to)
