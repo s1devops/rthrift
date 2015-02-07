@@ -27,22 +27,19 @@ class TestCommications(unittest.TestCase):
         thrift_mod = thriftpy.load("tests/test_resources/service.thrift")
         uri = os.environ.get('AMQP_URI', 'amqp://guest:guest@localhost:5672/%2f')
 
-        exchange = 'amq.match'
-
         self.listener_queue = Queue()
         responder = Responder(thrift_mod, self.listener_queue)
         self.responder = responder
-        self.listener = get_listener(thrift_mod.TestService, responder, uri, exchange, routing_keys=['TestService.ping_broadcast'])
+        self.listener = get_listener(thrift_mod.TestBroadcastService, responder, uri, routing_keys=True)
         threading.Thread(target=self.listenerThread).start()
         sleep(3) # give listener time to start and register
 
-        self.sender = get_sender(thrift_mod.TestService, uri, exchange)
+        self.sender = get_sender(thrift_mod.TestBroadcastService, uri)
 
 
 
 
     def test_successful(self):
-
         range_max = 20
         for i in range(range_max):
             self.sender.ping_broadcast(i)

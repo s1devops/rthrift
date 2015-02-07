@@ -20,9 +20,15 @@ class TThreadedServer_R(TThreadedServer):
             action()
 
 
-def get_server(service, responder, uri, exchange, queue):
+def get_server(service, responder, uri, exchange='amq.topic', routing_keys=None, queue=None):
     rclient = RClient(uri)
-    s_transport = TTransport_R(rclient, TTransport_R.SERVER, amqp_exchange = exchange, amqp_queue = queue)
+    if queue is None:
+        queue = '{}.{}'.format(service.__module__, service.__name__)
+
+    if routing_keys is True:
+        routing_keys = ['{}.{}.{}'.format(service.__module__, service.__name__, s) for s in service.thrift_services]
+
+    s_transport = TTransport_R(rclient, TTransport_R.SERVER, amqp_exchange = exchange, amqp_queue = queue, routing_keys = routing_keys)
     processor = TProcessor(service, responder)
     server = TThreadedServer_R(processor, s_transport, TBufferedTransportFactory(), TBinaryProtocolFactory_R())
 

@@ -19,15 +19,15 @@ class TBinaryProtocolFactory_R(object):
 
 class TBinaryProtocol_R(TBinaryProtocol):
 
-    def __init__(self, trans, strict_read=True, strict_write=True, transport_mode=None, service_name=None):
+    def __init__(self, trans, strict_read=True, strict_write=True, transport_mode=None, service=None):
         super().__init__(trans, strict_read=strict_read, strict_write=strict_write)
 
         self.transport_mode = transport_mode
-        self.service_name = service_name
+        self.service = service
 
     def write_message_begin(self, name, ttype, seqid):
-        if self.transport_mode == TTransport_R.BROADCAST_SENDER:
-            self.trans.rpc_function_name = '{}.{}'.format(self.service_name, name)
+        if self.transport_mode in [TTransport_R.BROADCAST_SENDER, TTransport_R.CLIENT]:
+            self.trans.rpc_function_name = '{}.{}.{}'.format(self.service.__module__, self.service.__name__, name)
         super().write_message_begin(name, ttype, seqid)
 
 
@@ -87,7 +87,8 @@ class TTransport_R(TTransportBase):
     def listen(self):
         if self._role == self.SERVER:
             queue = self._amqp_client.consumer(self.msg_recv, name=self.amqp_queue)
-            queue.bind(self.amqp_exchange, self.amqp_queue)
+            for routing_key in self._routing_keys:
+                queue.bind(self.amqp_exchange, routing_key)
         elif self._role == self.BROADCAST_LISTENER:
             queue = self._amqp_client.consumer(self.msg_recv, name=self.amqp_queue, no_ack=True, exclusive=True, auto_delete=True)
             for routing_key in self._routing_keys:
@@ -228,7 +229,8 @@ class TTransport_R(TTransportBase):
         if self._role == self.CLIENT:
             properties['reply_to'] = 'amq.rabbitmq.reply-to'
             exchange = self.amqp_exchange
-            self._amqp_client.publish(message, exchange, self.amqp_queue)
+            routing_key = self.rpc_function_name
+            self._amqp_client.publish(message, exchange, routing_key)
         elif self._role == self.BROADCAST_SENDER:
             exchange = self.amqp_exchange
             routing_key = self.rpc_function_name

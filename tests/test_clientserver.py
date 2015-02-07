@@ -29,15 +29,12 @@ class TestCommications(unittest.TestCase):
         thrift_mod = thriftpy.load("tests/test_resources/service.thrift")
         uri = os.environ.get('AMQP_URI', 'amqp://guest:guest@localhost:5672/%2f')
 
-        queue = 'test.communication'
-        exchange = 'amq.direct'
-
         responder = Responder(thrift_mod)
         self.responder = responder
-        self.server = get_server(thrift_mod.TestService, responder, uri, exchange, queue)
+        self.server = get_server(thrift_mod.TestService, responder, uri, routing_keys=True)
         threading.Thread(target=self.serverThread).start()
 
-        self.client = get_client(thrift_mod.TestService, uri, exchange, queue, read_timeout=1)
+        self.client = get_client(thrift_mod.TestService, uri, read_timeout=1)
 
 
 

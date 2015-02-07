@@ -7,19 +7,22 @@ from thriftpy.thrift import TClient, TProcessor
 from uuid import uuid4
 
 
-def get_sender(service, uri, exchange):
+def get_sender(service, uri, exchange='amq.topic'):
     client = RClient(uri)
     c_transport = TTransport_R(client, TTransport_R.BROADCAST_SENDER, amqp_exchange = exchange)
-    c_proto = TBinaryProtocol_R(c_transport, transport_mode=TTransport_R.BROADCAST_SENDER,service_name=service.__name__)
+    c_proto = TBinaryProtocol_R(c_transport, transport_mode=TTransport_R.BROADCAST_SENDER, service=service)
     client = TClient(service, c_proto)
     c_transport.open()
 
     return client
 
 
-def get_listener(service, responder, uri, exchange, routing_keys, queue=None):
+def get_listener(service, responder, uri, exchange='amq.topic', routing_keys=None, queue=None):
     if queue is None:
         queue = str(uuid4())
+
+    if routing_keys is True:
+        routing_keys = ['{}.{}.{}'.format(service.__module__, service.__name__, s) for s in service.thrift_services]
     rclient = RClient(uri)
     s_transport = TTransport_R(rclient, TTransport_R.BROADCAST_LISTENER, amqp_exchange = exchange, amqp_queue = queue, routing_keys=routing_keys)
     processor = TProcessor(service, responder)
