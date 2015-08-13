@@ -44,10 +44,12 @@ class TestCommications(unittest.TestCase):
         for i in range(range_max):
             self.sender.ping_broadcast(i)
 
+        recv_count = 0
         for i in range(range_max):
             val = self.listener_queue.get()
             self.assertEqual(val, i)
-
+            recv_count += 1
+        self.assertEqual(range_max, recv_count)
 
     def tearDown(self):
         self.listener.close()

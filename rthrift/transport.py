@@ -2,7 +2,7 @@ from io import BytesIO
 from thriftpy.protocol.binary import TBinaryProtocol
 from thriftpy.thrift import TMessageType, TApplicationException
 
-from thriftpy.transport.transport import TTransportBase, TTransportException
+from thriftpy.transport import TTransportBase, TTransportException
 
 from .rclient import Message
 import rabbitpy

@@ -131,7 +131,7 @@ class RClient(object):
         rmq_queue.declare()
         queue_id = str(uuid4())
         def consume_func():
-            for msg in rmq_queue.consume_messages(no_ack=no_ack):
+            for msg in rmq_queue.consume(no_ack=no_ack):
                 if msg is None:
                     return
                 self.cmd_queue.put(CommandPacketReceive(msg, queue_id))
@@ -143,6 +143,7 @@ class RClient(object):
                 cmd = reply_queue.get()
                 reply_queue.task_done()
                 if cmd.TYPE == PacketTypes.SHUTDOWN:
+                    rmq_queue.stop_consuming()
                     return
                 elif cmd.TYPE == PacketTypes.RECEIVE:
                     result = message_action(cmd.msg)
@@ -161,12 +162,12 @@ class RClient(object):
     def shutdown(self):
         self.cmd_queue.put(CommandPacketShutdown())
         #Ugly, but the only reliable way to close the consumer from any thread
-        self.channel._read_queue.put(pamqp.specification.Basic.CancelOk())
+        #self.channel._read_queue.put(pamqp.specification.Basic.Cancel())
         #self.channel.close()
 
-        #[thread.join() for thread in self._threads]
+        [thread.join() for thread in self._threads]
         self.cmd_queue.join()
-        self.conn.close()
+        #self.conn.close()
 
     def publish(self, message, exchange_name, routing_key):
         cmd = CommandPacketPublish(message, exchange=exchange_name, routing_key = routing_key)

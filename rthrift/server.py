@@ -4,7 +4,7 @@ from .rclient import RClient
 
 from thriftpy.thrift import TClient, TProcessor
 from thriftpy.server import TThreadedServer, TSimpleServer
-from thriftpy.transport.transport import TBufferedTransportFactory
+from thriftpy.transport import TBufferedTransportFactory
 
 class TThreadedServer_R(TThreadedServer):
     def __init__(self, *args, **kwargs):

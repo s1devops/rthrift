@@ -11,7 +11,6 @@ class Responder(object):
 
     def __init__(self, thrift_mod):
         self.thrift_mod = thrift_mod
-
         self.set_ping_func(lambda x: x)
 
     def set_ping_func(self, func):
@@ -37,13 +36,16 @@ class TestCommications(unittest.TestCase):
         self.client = get_client(thrift_mod.TestService, uri, read_timeout=1)
 
 
-
-
     def test_successful(self):
         self.responder.set_ping_func(lambda x: x)
-        for i in range(20):
+
+        send_count = 20
+        recv_count = 0
+        for i in range(send_count):
             response = self.client.ping(i)
+            recv_count += 1
             self.assertEqual(response, i)
+        self.assertEqual(recv_count, send_count)
 
     def test_wrong_response(self):
         self.responder.set_ping_func(lambda x: None)
@@ -56,9 +58,8 @@ class TestCommications(unittest.TestCase):
             sleep(3)
             return val
         self.responder.set_ping_func(wait_long)
-        with self.assertRaises(thriftpy.transport.transport.TTransportException):
+        with self.assertRaises(thriftpy.transport.TTransportException):
             response = self.client.ping(101)
-
 
         sleep(3) # give server time to clear
         self.responder.set_ping_func(lambda x: x)
@@ -69,9 +70,7 @@ class TestCommications(unittest.TestCase):
 
     def tearDown(self):
         self.server.close()
-
-        self.client._iprot.trans.close()
-        self.client._iprot.trans.shutdown()
+        self.client.close()
 
 if __name__ == '__main__':
     unittest.main()

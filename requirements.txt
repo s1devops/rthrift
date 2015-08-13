@@ -1,4 +1,4 @@
-pamqp==1.6.0
-ply==3.4
-rabbitpy==0.25.0
-thriftpy==0.1.15
+pamqp==1.6.1
+ply==3.6
+rabbitpy==0.26.2
+thriftpy==0.3.1
