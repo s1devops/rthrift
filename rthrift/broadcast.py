@@ -6,7 +6,7 @@ from uuid import uuid4
 
 
 def get_sender(service, uri, exchange='amq.topic'):
-    return get_client, service, uri, exchange=exchange, role=TTransport_R.BROADCAST_SENDER)
+    return get_client(service, uri, exchange=exchange, role=TTransport_R.BROADCAST_SENDER)
 
 
 def get_listener(service, responder, uri, exchange='amq.topic', routing_keys=None, queue=None):

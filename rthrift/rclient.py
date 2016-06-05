@@ -170,5 +170,5 @@ class RClient(object):
         #self.conn.close()
 
     def publish(self, message, exchange_name, routing_key):
-        cmd = CommandPacketPublish(message, exchange=exchange_name, routing_key = routing_key)
+        cmd = CommandPacketPublish(message, exchange=exchange_name, routing_key=routing_key)
         self.cmd_queue.put(cmd)

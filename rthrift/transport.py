@@ -53,7 +53,7 @@ class TTransport_R(TTransportBase):
     CLOSED = 'CLOSED'
     OPEN = 'OPEN'
 
-    def __init__(self, amqp_client, role = None, amqp_exchange = None, amqp_queue = None, routing_keys = None):
+    def __init__(self, amqp_client, role=None, amqp_exchange=None, amqp_queue=None, routing_keys=None):
         if role is None:
             role = self.CLIENT
         self._amqp_client = amqp_client
