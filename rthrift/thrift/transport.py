@@ -83,22 +83,27 @@ class TTransport_R(TTransportBase):
 
         self._read_timeout = None
 
+        self._channel_id = None
+
     def set_read_timeout(self, timeout):
         self._read_timeout = timeout
 
+
+    def _bind_queue(self, rmq_queue):
+        for routing_key in self._routing_keys:
+                results = rmq_queue.bind(self.amqp_exchange, routing_key)
+
+
     def listen(self):
         if self._role == self.SERVER:
-            queue = self._amqp_client.consumer(self.msg_recv, name=self.amqp_queue)
-            for routing_key in self._routing_keys:
-                queue.bind(self.amqp_exchange, routing_key)
+            self._channel_id = self._amqp_client.consumer(self.msg_recv, setup_func=self._bind_queue, name=self.amqp_queue)
         elif self._role == self.BROADCAST_LISTENER:
-            queue = self._amqp_client.consumer(self.msg_recv,
-                                               name=self.amqp_queue,
-                                               no_ack=True,
-                                               exclusive=True,
-                                               auto_delete=True)
-            for routing_key in self._routing_keys:
-                queue.bind(self.amqp_exchange, routing_key)
+            self._channel_id = self._amqp_client.consumer(self.msg_recv,
+                                       setup_func=self._bind_queue,
+                                       name=self.amqp_queue,
+                                       no_ack=True,
+                                       exclusive=True,
+                                       auto_delete=True)
         self._amqp_client.start()
         self._status = self.OPEN
 
@@ -114,12 +119,11 @@ class TTransport_R(TTransportBase):
 
     def open(self):
         if self._role == self.CLIENT:
-            q = self._amqp_client.consumer(self.msg_recv,
-                                           no_ack=True,
-                                           name='amq.rabbitmq.reply-to')
-
+            channel_id = self._amqp_client.consumer(self.msg_recv,
+                                                    no_ack=True,
+                                                    name='amq.rabbitmq.reply-to')
+            self._channel_id = channel_id
         if self._role == self.CLIENT or self._role == self.BROADCAST_SENDER:
-            self._amqp_client.start()
             self._status = self.OPEN
 
     def close(self):
@@ -129,7 +133,7 @@ class TTransport_R(TTransportBase):
         if self._status == self.CLOSED:
             return
         self._status = self.CLOSED
-        self._amqp_client.shutdown()
+        #self._amqp_client.shutdown()
         self.rpc_queue.put(None)
 
     @property
@@ -155,7 +159,6 @@ class TTransport_R(TTransportBase):
     @property
     def rpc_queue(self):
         if self._rpc_queue is None:
-            import queue
             self._rpc_queue = Queue()
         return self._rpc_queue
 
@@ -239,11 +242,10 @@ class TTransport_R(TTransportBase):
             properties['reply_to'] = 'amq.rabbitmq.reply-to'
             exchange = self.amqp_exchange
             routing_key = self.rpc_function_name
-            self._amqp_client.publish(message, exchange, routing_key)
+            self._amqp_client.publish(message, exchange, routing_key, channel_id=self._channel_id)
         elif self._role == self.BROADCAST_SENDER:
             exchange = self.amqp_exchange
             routing_key = self.rpc_function_name
-            self._amqp_client.publish(message, exchange, routing_key)
+            self._amqp_client.publish(message, exchange, routing_key, channel_id=self._channel_id)
         elif self._role == self.SERVER:
-            #TODO: are we thread safe?
-            self._amqp_client.publish(message, "", self._reply_to)
+            self._amqp_client.publish(message, "", self._reply_to, channel_id=self._channel_id)

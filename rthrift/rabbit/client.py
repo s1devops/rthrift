@@ -1,6 +1,7 @@
 from queue import Queue
 from uuid import uuid4
 import threading
+import logging
 
 import rabbitpy
 
@@ -12,24 +13,29 @@ from .packets import (PacketTypes, CommandPacketReceive,
 class RClient(object):
 
     def __init__(self, server_uri):
+        self.logger = logging.getLogger(__name__)
         self.server_uri = server_uri
 
-        self._conn = None
-
-        self._channel = None
+        self._conn = rabbitpy.Connection(self.server_uri)
+        #self._channel = self.conn.channel()
 
         self.thread_actions = []
         self._threads = []
 
         self.cmd_queue = Queue()
+        self.add_thread_action(self._cmd_consume)
 
     def _cmd_consume(self):
         reply_queues = {}
+        channels = {}
+        default_channel = self.conn.channel()
         while True:
             cmd = self.cmd_queue.get()
             self.cmd_queue.task_done()
+            self.logger.debug('Command packet: %s', cmd)
             if cmd.TYPE == PacketTypes.PUBLISH:
-                msg = cmd.msg.to_rmq_msg(self.channel)
+                channel = channels.get(cmd.channel_id, default_channel)
+                msg = cmd.msg.to_rmq_msg(channel)
                 msg.publish(cmd.exchange, cmd.routing_key, cmd.mandatory)
             elif cmd.TYPE == PacketTypes.SHUTDOWN:
                 for _, target_queue in reply_queues.items():
@@ -43,51 +49,37 @@ class RClient(object):
                     raise Exception('todo, unrouted packets')
             elif cmd.TYPE == PacketTypes.CONSUME:
                 reply_queues[cmd.queue_id] = cmd.reply_queue
+                if cmd.channel is not None:
+                    channels[cmd.queue_id] = cmd.channel
             else:
                 raise Exception('unknown packet type')
 
     @property
     def conn(self):
-        if self._conn is None:
-            self._conn = rabbitpy.Connection(self.server_uri)
         return self._conn
 
-    @property
-    def channel(self):
-        if self._channel is None:
-            channel = self.conn.channel()
-            self._channel = channel
-
-        return self._channel
-
-    def add_thread_action(self, func):
-        self.thread_actions.append(func)
+    def add_thread_action(self, func, args=None):
+        if args is None:
+            args = ()
+        thread = threading.Thread(target=func, args=args)
+        thread.start()
+        self._threads.append(thread)
 
     def start(self):
-        self.thread_actions.append(self._cmd_consume)
-        threads = [threading.Thread(target=func) for func in self.thread_actions]
-        for thread in threads:
-            thread.start()
-        self._threads = threads
+        pass
 
-    def consumer(self, message_action, no_ack=False, **kwargs):
-        rmq_queue = rabbitpy.Queue(self.channel, **kwargs)
+    def consumer(self, message_action, name='', setup_func=None, no_ack=False, **kwargs):
+        channel = self.conn.channel()
+        rmq_queue = rabbitpy.Queue(channel, name=name, **kwargs)
         rmq_queue.declare()
         queue_id = str(uuid4())
-        def consume_func():
-            for msg in rmq_queue.consume(no_ack=no_ack):
-                if msg is None:
-                    return
-                self.cmd_queue.put(CommandPacketReceive(msg, queue_id))
-        self.add_thread_action(consume_func)
 
-        reply_queue = Queue()
-        def action_func():
+        def action_func(local_queue, reply_queue):
             while True:
                 cmd = reply_queue.get()
                 reply_queue.task_done()
                 if cmd.TYPE == PacketTypes.SHUTDOWN:
-                    rmq_queue.stop_consuming()
+                    local_queue.stop_consuming()
                     return
                 elif cmd.TYPE == PacketTypes.RECEIVE:
                     result = message_action(cmd.msg)
@@ -95,12 +87,24 @@ class RClient(object):
                         return
                 else:
                     raise Exception('Unknown packet type in action_func')
-        self.add_thread_action(action_func)
 
-        cmd = CommandPacketConsume(queue_id, reply_queue)
+        def consume_func(local_queue):
+            for msg in rmq_queue.consume(no_ack=no_ack):
+                if msg is None:
+                    return
+                self.cmd_queue.put(CommandPacketReceive(msg, queue_id))
+
+        if setup_func:
+            setup_func(rmq_queue)
+
+        reply_queue = Queue()
+        cmd = CommandPacketConsume(queue_id, reply_queue, channel)
         self.cmd_queue.put(cmd)
 
-        return rmq_queue
+        self.add_thread_action(consume_func, args=(rmq_queue,))
+        self.add_thread_action(action_func, args=(rmq_queue, reply_queue))
+
+        return queue_id
 
 
     def shutdown(self):
@@ -114,6 +118,9 @@ class RClient(object):
         self.cmd_queue.join()
         #self.conn.close()
 
-    def publish(self, message, exchange_name, routing_key):
-        cmd = CommandPacketPublish(message, exchange=exchange_name, routing_key=routing_key)
+    def publish(self, message, exchange_name, routing_key, channel_id=None):
+        cmd = CommandPacketPublish(message,
+                                   exchange=exchange_name,
+                                   routing_key=routing_key,
+                                   channel_id=channel_id)
         self.cmd_queue.put(cmd)

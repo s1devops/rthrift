@@ -5,8 +5,10 @@ from .client import get_client
 from .thrift.transport import TTransport_R
 
 
-def get_sender(service, uri, exchange='amq.topic'):
-    return get_client(service, uri, exchange=exchange, transport_mode=TTransport_R.BROADCAST_SENDER)
+def get_sender(service, uri=None, exchange='amq.topic', rmq_client=None):
+    return get_client(service, uri=uri, exchange=exchange,
+                      transport_mode=TTransport_R.BROADCAST_SENDER,
+                      rmq_client=rmq_client)
 
 
 def get_listener(service, responder, uri, exchange='amq.topic', routing_keys=None, queue=None):

@@ -1,8 +1,7 @@
 import unittest
 
-from rthrift.broadcast import get_sender, get_listener
+from rthrift.multi import Multi
 import thriftpy
-import threading
 from time import sleep
 import os
 
@@ -20,23 +19,21 @@ class Responder(object):
 
 
 class TestCommications(unittest.TestCase):
-    def listenerThread(self):
-        self.listener.serve()
-
     def setUp(self):
         thrift_mod = thriftpy.load("tests/test_resources/service.thrift")
         uri = os.environ.get('AMQP_URI', 'amqp://guest:guest@localhost:5672/%2f')
 
+        self.multi = Multi(uri)
+
         self.listener_queue = Queue()
         responder = Responder(thrift_mod, self.listener_queue)
         self.responder = responder
-        self.listener = get_listener(thrift_mod.TestBroadcastService, responder, uri, routing_keys=True)
-        threading.Thread(target=self.listenerThread).start()
-        sleep(3) # give listener time to start and register
+        self.sender = self.multi.new_sender(thrift_mod.TestBroadcastService)
+        self.listener = self.multi.new_listener(thrift_mod.TestBroadcastService, responder, routing_keys=True)
+        self.multi.start()
 
-        self.sender = get_sender(thrift_mod.TestBroadcastService, uri)
-
-
+        # Give the listener enough time to start up
+        sleep(3)
 
 
     def test_successful(self):
@@ -52,10 +49,7 @@ class TestCommications(unittest.TestCase):
         self.assertEqual(range_max, recv_count)
 
     def tearDown(self):
-        self.listener.close()
-
-        self.sender._iprot.trans.close()
-        self.sender._iprot.trans.shutdown()
+        self.multi.shutdown(wait=True)
 
 if __name__ == '__main__':
     unittest.main()

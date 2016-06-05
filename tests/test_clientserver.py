@@ -1,11 +1,10 @@
 import unittest
 
-from rthrift.server import get_server
-from rthrift.client import get_client
+from rthrift.multi import Multi
 import thriftpy
-import threading
 from time import sleep
 import os
+
 
 class Responder(object):
 
@@ -21,19 +20,18 @@ class Responder(object):
 
 
 class TestCommications(unittest.TestCase):
-    def serverThread(self):
-        self.server.serve()
-
     def setUp(self):
         thrift_mod = thriftpy.load("tests/test_resources/service.thrift")
         uri = os.environ.get('AMQP_URI', 'amqp://guest:guest@localhost:5672/%2f')
 
+        self.multi = Multi(uri)
+
         responder = Responder(thrift_mod)
         self.responder = responder
-        self.server = get_server(thrift_mod.TestService, responder, uri, routing_keys=True)
-        threading.Thread(target=self.serverThread).start()
+        self.client = self.multi.new_client(thrift_mod.TestService, read_timeout=1)
+        self.server = self.multi.new_server(thrift_mod.TestService, responder, routing_keys=True)
 
-        self.client = get_client(thrift_mod.TestService, uri, read_timeout=1)
+        self.multi.start()
 
 
     def test_successful(self):
@@ -69,8 +67,7 @@ class TestCommications(unittest.TestCase):
         self.assertEqual(response, request)
 
     def tearDown(self):
-        self.server.close()
-        self.client.close()
+        self.multi.shutdown(wait=True)
 
 if __name__ == '__main__':
     unittest.main()
