@@ -16,10 +16,10 @@ class TClient_R(TClient):
             action()
 
 
-def get_client(service, uri, exchange='amq.topic', read_timeout=None):
+def get_client(service, uri, exchange='amq.topic', read_timeout=None, role=TTransport_R.CLIENT):
     rmq_client = RClient(uri)
-    c_transport = TTransport_R(rmq_client, TTransport_R.CLIENT, amqp_exchange=exchange)
-    c_proto = TBinaryProtocol_R(c_transport, transport_mode=TTransport_R.CLIENT, service=service)
+    c_transport = TTransport_R(rmq_client, role, amqp_exchange=exchange)
+    c_proto = TBinaryProtocol_R(c_transport, role, service=service)
     client = TClient_R(service, c_proto)
     client.add_close_action(c_transport.close)
     client.add_close_action(c_transport.shutdown)
