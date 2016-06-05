@@ -1,13 +1,12 @@
 from io import BytesIO
-from thriftpy.protocol.binary import TBinaryProtocol
-from thriftpy.thrift import TMessageType, TApplicationException
+from queue import Queue, Empty as QueueEmpty
+from uuid import uuid4
 
+from thriftpy.protocol.binary import TBinaryProtocol
 from thriftpy.transport import TTransportBase, TTransportException
 
-from .rclient import Message
-import rabbitpy
-import queue
-from uuid import uuid4
+from ..rabbit.message import Message
+
 
 class TBinaryProtocolFactory_R(object):
     def __init__(self, strict_read=True, strict_write=True):
@@ -19,7 +18,8 @@ class TBinaryProtocolFactory_R(object):
 
 class TBinaryProtocol_R(TBinaryProtocol):
 
-    def __init__(self, trans, strict_read=True, strict_write=True, transport_mode=None, service=None):
+    def __init__(self, trans, strict_read=True, strict_write=True,
+                 transport_mode=None, service=None):
         super().__init__(trans, strict_read=strict_read, strict_write=strict_write)
 
         self.transport_mode = transport_mode
@@ -27,7 +27,8 @@ class TBinaryProtocol_R(TBinaryProtocol):
 
     def write_message_begin(self, name, ttype, seqid):
         if self.transport_mode in [TTransport_R.BROADCAST_SENDER, TTransport_R.CLIENT]:
-            self.trans.rpc_function_name = '{}.{}.{}'.format(self.service.__module__, self.service.__name__, name)
+            self.trans.rpc_function_name = '{}.{}.{}'.format(
+                self.service.__module__, self.service.__name__, name)
         super().write_message_begin(name, ttype, seqid)
 
 
@@ -38,7 +39,7 @@ class TTransport_Dummy(object):
     def listen(self):
         self.excp()
 
-    def read(self,sz):
+    def read(self, _):
         raise TTransportException('rmq is closed')
 
     def close(self):
@@ -53,7 +54,8 @@ class TTransport_R(TTransportBase):
     CLOSED = 'CLOSED'
     OPEN = 'OPEN'
 
-    def __init__(self, amqp_client, role=None, amqp_exchange=None, amqp_queue=None, routing_keys=None):
+    def __init__(self, amqp_client, role=None, amqp_exchange=None,
+                 amqp_queue=None, routing_keys=None):
         if role is None:
             role = self.CLIENT
         self._amqp_client = amqp_client
@@ -90,25 +92,31 @@ class TTransport_R(TTransportBase):
             for routing_key in self._routing_keys:
                 queue.bind(self.amqp_exchange, routing_key)
         elif self._role == self.BROADCAST_LISTENER:
-            queue = self._amqp_client.consumer(self.msg_recv, name=self.amqp_queue, no_ack=True, exclusive=True, auto_delete=True)
+            queue = self._amqp_client.consumer(self.msg_recv,
+                                               name=self.amqp_queue,
+                                               no_ack=True,
+                                               exclusive=True,
+                                               auto_delete=True)
             for routing_key in self._routing_keys:
                 queue.bind(self.amqp_exchange, routing_key)
         self._amqp_client.start()
         self._status = self.OPEN
 
     def accept(self):
-        # TODO: do we want to return something besides self?
         #self._read_msg()
         if self._accept_count < 1:
             self._accept_count += 1
             return self
         else:
-            [t.join() for t in self._amqp_client._threads]
+            for thread in self._amqp_client._threads:
+                thread.join()
             return TTransport_Dummy()
 
     def open(self):
         if self._role == self.CLIENT:
-            q = self._amqp_client.consumer(self.msg_recv, no_ack = True, name='amq.rabbitmq.reply-to')
+            q = self._amqp_client.consumer(self.msg_recv,
+                                           no_ack=True,
+                                           name='amq.rabbitmq.reply-to')
 
         if self._role == self.CLIENT or self._role == self.BROADCAST_SENDER:
             self._amqp_client.start()
@@ -148,11 +156,11 @@ class TTransport_R(TTransportBase):
     def rpc_queue(self):
         if self._rpc_queue is None:
             import queue
-            self._rpc_queue = queue.Queue()
+            self._rpc_queue = Queue()
         return self._rpc_queue
 
-    def set_rpc_func(self, name):
-        self._rpc_func = name
+    #def set_rpc_func(self, name):
+    #    self._rpc_func = name
 
     @property
     def rpc_msg_id(self):
@@ -179,7 +187,7 @@ class TTransport_R(TTransportBase):
     def _read_msg(self):
         try:
             while True:
-                msg = self.rpc_queue.get(timeout = self._read_timeout)
+                msg = self.rpc_queue.get(timeout=self._read_timeout)
                 if msg is None:
                     return False
                 if self._role == self.SERVER or self._role == self.BROADCAST_LISTENER:
@@ -189,11 +197,12 @@ class TTransport_R(TTransportBase):
                     self._rbuf = BytesIO(msg.body)
                     return True
                 elif self._role == self.CLIENT:
-                    if self.rpc_msg_id is None or self.rpc_msg_id == msg.properties['correlation_id']:
+                    if self.rpc_msg_id is None \
+                       or self.rpc_msg_id == msg.properties['correlation_id']:
                         self._rbuf = BytesIO(msg.body)
                         return True
 
-        except queue.Empty:
+        except QueueEmpty:
             return False
 
 
@@ -224,7 +233,7 @@ class TTransport_R(TTransportBase):
             'correlation_id': self.rpc_msg_id,
         }
 
-        message = Message(msg,properties)
+        message = Message(msg, properties)
 
         if self._role == self.CLIENT:
             properties['reply_to'] = 'amq.rabbitmq.reply-to'

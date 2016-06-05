@@ -1,68 +1,12 @@
-import rabbitpy
-import threading
-import pamqp.specification
 from queue import Queue
 from uuid import uuid4
+import threading
 
-class Message(object):
-    def __init__(self, body_value, properties=None, auto_id=False, opinionated=False):
-        """Create a new instance of the Message object."""
-        # Always have a dict of properties set
-        self.properties = properties or {}
+import rabbitpy
 
-        self.body_value = body_value
-        self.auto_id = auto_id
-        self.opinionated = opinionated
-
-    def to_rmq_msg(self, channel):
-        return rabbitpy.Message(channel, self.body_value, self.properties, self.auto_id, self.opinionated)
-
-class PacketTypes(object):
-    UNKNOWN = 0x1
-    PUBLISH = 0x2
-    RECEIVE = 0x3
-    CONSUME = 0x4
-    SHUTDOWN = 0x5
-
-
-class CommandPacket(object):
-    TYPE = PacketTypes.UNKNOWN
-
-    def __repr__(self):
-        t = {PacketTypes.UNKNOWN: 'UNKNOWN',
-             PacketTypes.PUBLISH: 'PUBLISH',
-             PacketTypes.RECEIVE: 'RECEIVE',
-             PacketTypes.CONSUME: 'CONSUME',
-             PacketTypes.SHUTDOWN: 'SHUTDOWN',
-         }[self.TYPE]
-        return 'CommandPacket ({0})'.format(t)
-
-class CommandPacketPublish(CommandPacket):
-    TYPE = PacketTypes.PUBLISH
-
-    def __init__(self, msg, exchange, routing_key='', mandatory=False):
-        self.msg = msg
-        self.exchange = exchange
-        self.routing_key = routing_key
-        self.mandatory = mandatory
-
-
-class CommandPacketConsume(CommandPacket):
-    TYPE = PacketTypes.CONSUME
-
-    def __init__(self, queue_id, reply_queue = None):
-        self.queue_id = queue_id
-        self.reply_queue = reply_queue or Queue()
-
-class CommandPacketReceive(CommandPacket):
-    TYPE = PacketTypes.RECEIVE
-
-    def __init__(self, msg, queue_id):
-        self.msg = msg
-        self.queue_id = queue_id
-
-class CommandPacketShutdown(CommandPacket):
-    TYPE = PacketTypes.SHUTDOWN
+from .packets import (PacketTypes, CommandPacketReceive,
+                      CommandPacketConsume, CommandPacketShutdown,
+                      CommandPacketPublish)
 
 
 class RClient(object):
@@ -88,9 +32,8 @@ class RClient(object):
                 msg = cmd.msg.to_rmq_msg(self.channel)
                 msg.publish(cmd.exchange, cmd.routing_key, cmd.mandatory)
             elif cmd.TYPE == PacketTypes.SHUTDOWN:
-                #self.channel.close()
-                for k, q in reply_queues.items():
-                    q.put(cmd)
+                for _, target_queue in reply_queues.items():
+                    target_queue.put(cmd)
                 reply_queues = {}
                 return
             elif cmd.TYPE == PacketTypes.RECEIVE:
@@ -123,7 +66,8 @@ class RClient(object):
     def start(self):
         self.thread_actions.append(self._cmd_consume)
         threads = [threading.Thread(target=func) for func in self.thread_actions]
-        [thread.start() for thread in threads]
+        for thread in threads:
+            thread.start()
         self._threads = threads
 
     def consumer(self, message_action, no_ack=False, **kwargs):
@@ -147,7 +91,7 @@ class RClient(object):
                     return
                 elif cmd.TYPE == PacketTypes.RECEIVE:
                     result = message_action(cmd.msg)
-                    if result == False:
+                    if result is False:
                         return
                 else:
                     raise Exception('Unknown packet type in action_func')
@@ -165,7 +109,8 @@ class RClient(object):
         #self.channel._read_queue.put(pamqp.specification.Basic.Cancel())
         #self.channel.close()
 
-        [thread.join() for thread in self._threads]
+        for thread in self._threads:
+            thread.join()
         self.cmd_queue.join()
         #self.conn.close()
 
