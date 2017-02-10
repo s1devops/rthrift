@@ -212,7 +212,7 @@ class TTransport_R(TTransportBase):
         except QueueEmpty:
             return False
 
-    def read(self, sz):
+    def _read(self, sz):
         data = self.__read(sz)
         return data
 
