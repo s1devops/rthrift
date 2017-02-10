@@ -8,6 +8,10 @@ from thriftpy.transport import TTransportBase, TTransportException
 from ..rabbit.message import Message
 
 
+class TTransportFactory_R(object):
+    def get_transport(self, trans):
+        return trans
+
 class TBinaryProtocolFactory_R(object):
     def __init__(self, strict_read=True, strict_write=True):
         self.strict_read = strict_read
@@ -208,8 +212,11 @@ class TTransport_R(TTransportBase):
         except QueueEmpty:
             return False
 
-
     def read(self, sz):
+        data = self.__read(sz)
+        return data
+
+    def __read(self, sz):
         if self._status != self.OPEN:
             raise TTransportException('RMQ Transport Not Open (read)')
 

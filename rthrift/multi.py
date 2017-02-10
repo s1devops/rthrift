@@ -2,12 +2,11 @@ from uuid import uuid4
 import threading
 
 from thriftpy.thrift import TProcessor
-from thriftpy.transport import TBufferedTransportFactory
 
 from .rabbit.client import RClient
 from .thrift.server import TThreadedServer_R
 from .thrift.transport import (TTransport_R, TBinaryProtocol_R,
-                               TBinaryProtocolFactory_R)
+                               TBinaryProtocolFactory_R, TTransportFactory_R)
 from .thrift.client import TClient_R
 
 
@@ -56,7 +55,7 @@ class Multi(object):
 
         server = TThreadedServer_R(processor,
                                    s_transport,
-                                   TBufferedTransportFactory(),
+                                   TTransportFactory_R(),
                                    TBinaryProtocolFactory_R())
 
         server.add_close_action(s_transport.shutdown)
