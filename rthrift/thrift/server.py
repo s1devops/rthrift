@@ -1,4 +1,4 @@
-from thriftpy.server import TThreadedServer
+from thriftpy2.server import TThreadedServer
 
 
 class TThreadedServer_R(TThreadedServer):

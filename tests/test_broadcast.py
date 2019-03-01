@@ -1,7 +1,7 @@
 import unittest
 
 from rthrift.multi import Multi
-import thriftpy
+import thriftpy2 as thriftpy
 from time import sleep
 import os
 

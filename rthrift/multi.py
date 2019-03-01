@@ -1,7 +1,7 @@
 from uuid import uuid4
 import threading
 
-from thriftpy.thrift import TProcessor
+from thriftpy2.thrift import TProcessor
 
 from .rabbit.client import RClient
 from .thrift.server import TThreadedServer_R
