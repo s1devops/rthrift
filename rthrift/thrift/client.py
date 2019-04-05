@@ -1,4 +1,4 @@
-from thriftpy.thrift import TClient
+from thriftpy2.thrift import TClient
 
 class TClient_R(TClient):
     def __init__(self, *args, **kwargs):

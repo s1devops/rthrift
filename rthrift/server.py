@@ -1,5 +1,5 @@
-from thriftpy.thrift import TProcessor
-from thriftpy.transport import TBufferedTransportFactory
+from thriftpy2.thrift import TProcessor
+from thriftpy2.transport import TBufferedTransportFactory
 
 from .thrift.server import TThreadedServer_R
 from .thrift.transport import TTransport_R, TBinaryProtocolFactory_R

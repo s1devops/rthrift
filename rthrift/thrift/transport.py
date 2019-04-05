@@ -2,8 +2,8 @@ from io import BytesIO
 from queue import Queue, Empty as QueueEmpty
 from uuid import uuid4
 
-from thriftpy.protocol.binary import TBinaryProtocol
-from thriftpy.transport import TTransportBase, TTransportException
+from thriftpy2.protocol.binary import TBinaryProtocol
+from thriftpy2.transport import TTransportBase, TTransportException
 
 from ..rabbit.message import Message
 
